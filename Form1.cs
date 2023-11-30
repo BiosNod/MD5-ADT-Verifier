@@ -12,8 +12,8 @@ namespace HashVerifyer
         }
 
         /*
-         * пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅ.пїЅ. пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
-         * пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+         * Добавление строк в текстовый бокс с прокруткой, т.к. по умолчанию
+         * прокрутка автоматически не работает
          */
         private void appendToRichBox(RichTextBox rtbMessages, string text)
         {
@@ -39,10 +39,10 @@ namespace HashVerifyer
 
             var rootDirectory = labelDirectory.Text;
 
-            // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ ProcessDirectoryAsync пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
+            // Запускаем ProcessDirectoryAsync в отдельном потоке
             await Task.Run(async () => await ProcessDirectoryAsync(rootDirectory));
 
-            appendToRichBox(loggerRichTextBox, "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ\n");
+            appendToRichBox(loggerRichTextBox, "Рекурсивное прохождение по директории выполнено\n");
         }
 
         private async Task ProcessDirectoryAsync(string directoryPath)
@@ -50,20 +50,29 @@ namespace HashVerifyer
             if (directoryPath == "System Volume Information" || directoryPath == "$RECYCLE.BIN")
                 return;
 
-            // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+            // Обработка файлов в текущей директории
             var files = Directory.GetFiles(directoryPath);
             foreach (var file in files)
-                await ProcessFileAsync(file);
+            {
+                try
+                {
+                    await ProcessFileAsync(file);
+                }
+                catch
+                {
+                    appendToRichBox(badFilesTextBox, $"Access denied to file: {file}\n\n");
+                }
+            }
 
-            // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+            // Рекурсивная обработка поддиректорий
             var subdirectories = Directory.GetDirectories(directoryPath);
             foreach (var subdirectory in subdirectories)
                 await ProcessDirectoryAsync(subdirectory);
         }
 
         /*
-         * пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ MD5 пїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅ ADS - md5-пїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
-         * пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
+         * Обновление MD5 файла и запись в два ADS - md5-хеша и даты изменения файла
+         * Дата изменения файла берётся из самого файла, это не текущая дата
          */
         private async Task RewindMD5AndDateAsync
         (
@@ -77,8 +86,8 @@ namespace HashVerifyer
         {
             await ADSWriteDataAsync(filePath, md5StreamName, await CalculateMD5Async(filePath));
             await ADSWriteDataAsync(filePath, dateStreamName, dateCurrent);
-            // пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ ADS пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ NTFS пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
-            // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+            // После добавления данных в ADS у файлов система NTFS меняет даты изменения и открытия
+            // Восстанавливаем даты изменения и последнего открытия
             File.SetLastWriteTimeUtc(filePath, lastModified);
             File.SetLastAccessTimeUtc(filePath, lastAccessed);
         }
@@ -119,7 +128,7 @@ namespace HashVerifyer
 
                 if (radioHybridMode.Checked || radioHashCheckOnly.Checked)
                 {
-                    // пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+                    // Файл изменился, проверять хеш смысла нет, просто пересчитаем
                     if (dateCurrent != dateOld)
                     {
                         appendToRichBox(changedFileTextBox, $"changed file: {filePath}\nrestore dates...\n\n");
@@ -152,7 +161,7 @@ namespace HashVerifyer
         }
 
         /*
-         * пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.пїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ ADS?
+         * Существу.т ли данные в ADS?
          */
         async Task<bool> ADSHasDataAsync(string filePath, string streamName)
         {
@@ -161,7 +170,7 @@ namespace HashVerifyer
         }
 
         /*
-         * пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ ADS пїЅпїЅпїЅпїЅпїЅ
+         * Запись данных в ADS файла
          */
         async Task ADSWriteDataAsync(string filePath, string streamName, string data)
         {
@@ -174,7 +183,7 @@ namespace HashVerifyer
         }
 
         /*
-         * пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ ADS
+         * Чтение данных из ADS
          */
         async Task<string> ADSReadDataAsync(string filePath, string streamName)
         {
@@ -186,7 +195,7 @@ namespace HashVerifyer
             }
             catch (FileNotFoundException)
             {
-                return string.Empty; // пїЅпїЅпїЅпїЅ ADS пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+                return string.Empty; // Файл ADS не существует
             }
         }
 
@@ -203,22 +212,22 @@ namespace HashVerifyer
         {
             var folderBrowserDialog = new FolderBrowserDialog();
 
-            // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
-            folderBrowserDialog.Description = "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ";
+            // Устанавливаем заголовок диалога
+            folderBrowserDialog.Description = "Выберите директорию";
 
-            // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+            // Показываем диалог и получаем результат выбора пользователя
             var result = folderBrowserDialog.ShowDialog();
 
             if (result == DialogResult.OK)
             {
-                // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+                // Выбранная пользователем директория
                 var selectedPath = folderBrowserDialog.SelectedPath;
-                appendToRichBox(loggerRichTextBox, $"пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ: {selectedPath}\n");
+                appendToRichBox(loggerRichTextBox, $"Выбранная директория: {selectedPath}\n");
                 labelDirectory.Text = selectedPath;
             }
             else
             {
-                appendToRichBox(loggerRichTextBox, "пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ\n");
+                appendToRichBox(loggerRichTextBox, "Выбор директории отменен\n");
             }
         }
 
