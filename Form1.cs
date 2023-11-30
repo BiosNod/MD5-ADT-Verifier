@@ -22,7 +22,7 @@ namespace HashVerifyer
             rtbMessages.ScrollToCaret();
         }
 
-        private void buttonStartClick(object sender, EventArgs e)
+        private async void buttonStartClick(object sender, EventArgs e)
         {
             loggerRichTextBox.Clear();
             goodFilesTextBox.Clear();
@@ -30,32 +30,32 @@ namespace HashVerifyer
             newFileTextBox.Clear();
             changedFileTextBox.Clear();
 
-            string rootDirectory = labelDirectory.Text;
-            ProcessDirectory(rootDirectory);
+            var rootDirectory = labelDirectory.Text;
+            await ProcessDirectoryAsync(rootDirectory);
             appendToRichBox(loggerRichTextBox, "Рекурсивное прохождение по директории выполнено\n");
         }
 
-        private void ProcessDirectory(string directoryPath)
+        private async Task ProcessDirectoryAsync(string directoryPath)
         {
             if (directoryPath == "System Volume Information" || directoryPath == "$RECYCLE.BIN")
                 return;
 
             // Обработка файлов в текущей директории
-            string[] files = Directory.GetFiles(directoryPath);
-            foreach (string file in files)
-                ProcessFile(file);
+            var files = Directory.GetFiles(directoryPath);
+            foreach (var file in files)
+                await ProcessFileAsync(file);
 
             // Рекурсивная обработка поддиректорий
-            string[] subdirectories = Directory.GetDirectories(directoryPath);
-            foreach (string subdirectory in subdirectories)
-                ProcessDirectory(subdirectory);
+            var subdirectories = Directory.GetDirectories(directoryPath);
+            foreach (var subdirectory in subdirectories)
+                await ProcessDirectoryAsync(subdirectory);
         }
 
         /*
          * Обновление MD5 файла и запись в два ADS - md5-хеша и даты изменения файла
          * Дата изменения файла берётся из самого файла, это не текущая дата
          */
-        private void RewindMD5AndDate
+        private async Task RewindMD5AndDateAsync
         (
             string filePath,
             string md5StreamName,
@@ -65,28 +65,28 @@ namespace HashVerifyer
             DateTime lastAccessed
         )
         {
-            ADSWriteData(filePath, md5StreamName, CalculateMD5(filePath));
-            ADSWriteData(filePath, dateStreamName, dateCurrent);
+            await ADSWriteDataAsync(filePath, md5StreamName, await CalculateMD5Async(filePath));
+            await ADSWriteDataAsync(filePath, dateStreamName, dateCurrent);
             // После добавления данных в ADS у файлов система NTFS меняет даты изменения и открытия
             // Восстанавливаем даты изменения и последнего открытия
             File.SetLastWriteTimeUtc(filePath, lastModified);
             File.SetLastAccessTimeUtc(filePath, lastAccessed);
         }
 
-        private void ProcessFile(string filePath)
+        private async Task ProcessFileAsync(string filePath)
         {
-            string md5StreamName = "md5";
-            string dateStreamName = "date";
-            DateTime dateModified = File.GetLastWriteTimeUtc(filePath);
-            DateTime dateAccessed = File.GetLastAccessTimeUtc(filePath);
-            string dateCurrent = dateModified.ToString("yyyy-MM-ddTHH:mm:ssZ");
+            var md5StreamName = "md5";
+            var dateStreamName = "date";
+            var dateModified = File.GetLastWriteTimeUtc(filePath);
+            var dateAccessed = File.GetLastAccessTimeUtc(filePath);
+            var dateCurrent = dateModified.ToString("yyyy-MM-ddTHH:mm:ssZ");
 
-            if (!ADSHasData(filePath, md5StreamName))
+            if (!await ADSHasDataAsync(filePath, md5StreamName))
             {
                 if (radioHybridMode.Checked || radioHashAddOnly.Checked)
                 {
                     appendToRichBox(loggerRichTextBox, $"Calculating hash for the new file: {filePath}\n\n");
-                    RewindMD5AndDate
+                    await RewindMD5AndDateAsync
                     (
                         filePath,
                         md5StreamName,
@@ -102,8 +102,8 @@ namespace HashVerifyer
             }
             else
             {
-                string md5Old = ADSReadData(filePath, md5StreamName);
-                string dateOld = ADSReadData(filePath, dateStreamName);
+                var md5Old = await ADSReadDataAsync(filePath, md5StreamName);
+                var dateOld = await ADSReadDataAsync(filePath, dateStreamName);
 
                 appendToRichBox(loggerRichTextBox, $"Hash already exists in ADS for file: {filePath}\nMD5: {md5Old}\nDate: {dateOld}\n\n");
 
@@ -114,7 +114,7 @@ namespace HashVerifyer
                     {
                         appendToRichBox(changedFileTextBox, $"changed file: {filePath}\nrestore dates...\n\n");
                         
-                        RewindMD5AndDate
+                        await RewindMD5AndDateAsync
                         (
                             filePath,
                             md5StreamName,
@@ -128,7 +128,7 @@ namespace HashVerifyer
                     {
                         appendToRichBox(changedFileTextBox, $"2 dates match, comparing 2 MD5 for file: {filePath}\n\n");
                         
-                        string md5Current = CalculateMD5(filePath);
+                        var md5Current = await CalculateMD5Async(filePath);
 
                         if (md5Current != md5Old)
                             appendToRichBox(badFilesTextBox, $"md5 mismatch in file: {filePath}\n[current hash:{md5Current}]\n[old hash:{md5Old}]\n\n");
@@ -137,46 +137,42 @@ namespace HashVerifyer
                     }
                 }
                 else
-                    loggerRichTextBox.AppendText($"Skip cheking hash in file: {filePath}\n\n");
+                    loggerRichTextBox.AppendText($"Skip checking hash in file: {filePath}\n\n");
             }
         }
 
         /*
          * Существу.т ли данные в ADS?
          */
-        bool ADSHasData(string filePath, string streamName)
+        async Task<bool> ADSHasDataAsync(string filePath, string streamName)
         {
-            string actualHash = ADSReadData(filePath, streamName);
+            var actualHash = await ADSReadDataAsync(filePath, streamName);
             return !string.IsNullOrEmpty(actualHash);
         }
 
         /*
          * Запись данных в ADS файла
          */
-        void ADSWriteData(string filePath, string streamName, string data)
+        async Task ADSWriteDataAsync(string filePath, string streamName, string data)
         {
-            DateTime lastModified = File.GetLastWriteTimeUtc(filePath);
-            string formattedDate = lastModified.ToString("yyyy-MM-ddTHH:mm:ssZ");
+            var lastModified = File.GetLastWriteTimeUtc(filePath);
+            var formattedDate = lastModified.ToString("yyyy-MM-ddTHH:mm:ssZ");
 
-            using (var fileStream = new FileStream(filePath + ":" + streamName, FileMode.Create, FileAccess.Write))
-            using (var writer = new StreamWriter(fileStream))
-            {
-                writer.Write(data);
-            }
+            await using var fileStream = new FileStream(filePath + ":" + streamName, FileMode.Create, FileAccess.Write);
+            await using var writer = new StreamWriter(fileStream);
+            await writer.WriteAsync(data);
         }
 
         /*
          * Чтение данных из ADS
          */
-        string ADSReadData(string filePath, string streamName)
+        async Task<string> ADSReadDataAsync(string filePath, string streamName)
         {
             try
             {
-                using (var fileStream = new FileStream(filePath + ":" + streamName, FileMode.Open, FileAccess.Read))
-                using (var reader = new StreamReader(fileStream))
-                {
-                    return reader.ReadToEnd();
-                }
+                await using var fileStream = new FileStream(filePath + ":" + streamName, FileMode.Open, FileAccess.Read);
+                using var reader = new StreamReader(fileStream);
+                return await reader.ReadToEndAsync();
             }
             catch (FileNotFoundException)
             {
@@ -184,31 +180,29 @@ namespace HashVerifyer
             }
         }
 
-        string CalculateMD5(string filePath)
+        async Task<string> CalculateMD5Async(string filePath)
         {
-            using (var md5 = MD5.Create())
-            using (var stream = File.OpenRead(filePath))
-            {
-                byte[] hash = md5.ComputeHash(stream);
-                // AA-BB-CC => AABBCC
-                return BitConverter.ToString(hash).Replace("-", "").ToLower();
-            }
+            using var md5 = MD5.Create();
+            await using var stream = File.OpenRead(filePath);
+            var hash = await md5.ComputeHashAsync(stream);
+            // AA-BB-CC => AABBCC
+            return BitConverter.ToString(hash).Replace("-", "").ToLower();
         }
 
         void SelectDirectory()
         {
-            FolderBrowserDialog folderBrowserDialog = new FolderBrowserDialog();
+            var folderBrowserDialog = new FolderBrowserDialog();
 
             // Устанавливаем заголовок диалога
             folderBrowserDialog.Description = "Выберите директорию";
 
             // Показываем диалог и получаем результат выбора пользователя
-            DialogResult result = folderBrowserDialog.ShowDialog();
+            var result = folderBrowserDialog.ShowDialog();
 
             if (result == DialogResult.OK)
             {
                 // Выбранная пользователем директория
-                string selectedPath = folderBrowserDialog.SelectedPath;
+                var selectedPath = folderBrowserDialog.SelectedPath;
                 appendToRichBox(loggerRichTextBox, $"Выбранная директория: {selectedPath}\n");
                 labelDirectory.Text = selectedPath;
             }
