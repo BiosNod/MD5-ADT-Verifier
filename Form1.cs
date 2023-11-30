@@ -11,6 +11,10 @@ namespace HashVerifyer
             InitializeComponent();
         }
 
+        /*
+         * Добавление строк в текстовый бокс с прокруткой, т.к. по умолчанию
+         * прокрутка автоматически не работает
+         */
         private void appendToRichBox(RichTextBox rtbMessages, string text)
         {
             rtbMessages.AppendText(text);
@@ -47,6 +51,10 @@ namespace HashVerifyer
                 ProcessDirectory(subdirectory);
         }
 
+        /*
+         * Обновление MD5 файла и запись в два ADS - md5-хеша и даты изменения файла
+         * Дата изменения файла берётся из самого файла, это не текущая дата
+         */
         private void RewindMD5AndDate
         (
             string filePath,
@@ -69,9 +77,9 @@ namespace HashVerifyer
         {
             string md5StreamName = "md5";
             string dateStreamName = "date";
-            DateTime lastModified = File.GetLastWriteTimeUtc(filePath);
-            DateTime lastAccessed = File.GetLastAccessTimeUtc(filePath);
-            string dateCurrent = lastModified.ToString("yyyy-MM-ddTHH:mm:ssZ");
+            DateTime dateModified = File.GetLastWriteTimeUtc(filePath);
+            DateTime dateAccessed = File.GetLastAccessTimeUtc(filePath);
+            string dateCurrent = dateModified.ToString("yyyy-MM-ddTHH:mm:ssZ");
 
             if (!ADSHasData(filePath, md5StreamName))
             {
@@ -84,8 +92,8 @@ namespace HashVerifyer
                         md5StreamName,
                         dateStreamName,
                         dateCurrent,
-                        lastModified,
-                        lastAccessed
+                        dateModified,
+                        dateAccessed
                     );
                     appendToRichBox(newFileTextBox, $"Hash and date added to ADS for the new file: {filePath}\n\n");
                 }
@@ -104,7 +112,7 @@ namespace HashVerifyer
                     // Файл изменился, проверять хеш смысла нет, просто пересчитаем
                     if (dateCurrent != dateOld)
                     {
-                        changedFileTextBox.AppendText($"changed file: {filePath}\nrestore dates...\n\n");
+                        appendToRichBox(changedFileTextBox, $"changed file: {filePath}\nrestore dates...\n\n");
                         
                         RewindMD5AndDate
                         (
@@ -112,13 +120,13 @@ namespace HashVerifyer
                             md5StreamName,
                             dateStreamName,
                             dateCurrent,
-                            lastModified,
-                            lastAccessed
+                            dateModified,
+                            dateAccessed
                         );
                     }
                     else
                     {
-                        changedFileTextBox.AppendText($"2 dates match, comparing 2 MD5 for file: {filePath}\n\n");
+                        appendToRichBox(changedFileTextBox, $"2 dates match, comparing 2 MD5 for file: {filePath}\n\n");
                         
                         string md5Current = CalculateMD5(filePath);
 
@@ -133,12 +141,18 @@ namespace HashVerifyer
             }
         }
 
+        /*
+         * Существу.т ли данные в ADS?
+         */
         bool ADSHasData(string filePath, string streamName)
         {
             string actualHash = ADSReadData(filePath, streamName);
             return !string.IsNullOrEmpty(actualHash);
         }
 
+        /*
+         * Запись данных в ADS файла
+         */
         void ADSWriteData(string filePath, string streamName, string data)
         {
             DateTime lastModified = File.GetLastWriteTimeUtc(filePath);
@@ -151,6 +165,9 @@ namespace HashVerifyer
             }
         }
 
+        /*
+         * Чтение данных из ADS
+         */
         string ADSReadData(string filePath, string streamName)
         {
             try
@@ -173,6 +190,7 @@ namespace HashVerifyer
             using (var stream = File.OpenRead(filePath))
             {
                 byte[] hash = md5.ComputeHash(stream);
+                // AA-BB-CC => AABBCC
                 return BitConverter.ToString(hash).Replace("-", "").ToLower();
             }
         }
@@ -191,12 +209,12 @@ namespace HashVerifyer
             {
                 // Выбранная пользователем директория
                 string selectedPath = folderBrowserDialog.SelectedPath;
-                loggerRichTextBox.AppendText($"Выбранная директория: {selectedPath}\n");
+                appendToRichBox(loggerRichTextBox, $"Выбранная директория: {selectedPath}\n");
                 labelDirectory.Text = selectedPath;
             }
             else
             {
-                loggerRichTextBox.AppendText("Выбор директории отменен\n");
+                appendToRichBox(loggerRichTextBox, "Выбор директории отменен\n");
             }
         }
 
